@@ -59,6 +59,9 @@ export class PersonController {
       return { message: 'Search results', result };
     } catch (error) {
       console.error('Error searching:', error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       throw new InternalServerErrorException('Error occurred during search');
     }
   }
