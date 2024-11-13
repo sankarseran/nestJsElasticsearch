@@ -82,4 +82,15 @@ export class PersonController {
       throw new InternalServerErrorException('Failed to update car count');
     }
   }
+
+  @Post('sync-contacts')
+  async syncHubSpotContacts() {
+    try {
+      await this.personService.syncHubSpotContacts();
+      return { message: 'HubSpot contacts synced successfully' };
+    } catch (error) {
+      console.error('Error updating car count:', error);
+      throw new InternalServerErrorException('Failed to sync contacts with HubSpot');
+    }
+  }
 }

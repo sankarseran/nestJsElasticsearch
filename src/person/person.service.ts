@@ -1,10 +1,22 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+} from '@nestjs/common';
 import { ElasticsearchService } from '@nestjs/elasticsearch';
 import { Person } from './person.entity';
+import { HubSpotService } from '../hubspot/hubspot.service';
+import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class PersonService {
-  constructor(private readonly elasticsearchService: ElasticsearchService) {}
+  private readonly index = 'people';
+
+  constructor(
+    private readonly elasticsearchService: ElasticsearchService,
+    private readonly hubSpotService: HubSpotService,
+  ) {}
 
   async createPerson(person: Person): Promise<any> {
     const dateOfBirthString = person.dateOfBirth;
@@ -18,9 +30,9 @@ export class PersonService {
     if (dateOfBirth > today) {
       throw new BadRequestException('dateOfBirth cannot be in the future');
     }
-    
+
     const result = await this.elasticsearchService.index({
-      index: 'people',
+      index: this.index,
       document: {
         fName: person.fName,
         lName: person.lName,
@@ -79,7 +91,7 @@ export class PersonService {
 
     try {
       const { hits } = await this.elasticsearchService.search({
-        index: 'people',
+        index: this.index,
         body: {
           query,
         },
@@ -95,11 +107,83 @@ export class PersonService {
       throw new BadRequestException('countOfOwnedCars must be a valid number');
     }
     const result = await this.elasticsearchService.update({
-      index: 'people',
+      index: this.index,
       id: personId,
       doc: { countOfOwnedCars: newCount },
     });
 
     return result;
+  }
+
+  async updateElasticsearchPerson(id: string, person: Person) {
+    await this.elasticsearchService.update({
+      index: this.index,
+      id,
+      doc: person,
+    });
+  }
+
+  private getContactEmail(contact: any): string | undefined {
+    const emailIdentity = contact['identity-profiles']
+      ?.flatMap((profile) => profile.identities)
+      .find((identity) => identity.type === 'EMAIL');
+
+    return emailIdentity?.value;
+  }
+  // for 60 seconds -> '*/60 * * * * *'
+  @Cron('0 */5 * * *') // Every 5 minutes
+  async handleScheduledSync() {
+    console.log('Running HubSpot sync job every 60 seconds...');
+    await this.syncHubSpotContacts();
+  }
+
+  async syncHubSpotContacts() {
+    let hasMore = true;
+    let vidOffset: number | undefined = undefined;
+
+    try {
+      while (hasMore) {
+        const { data } =
+          await this.hubSpotService.fetchHubSpotContacts(vidOffset);
+
+        for (const contact of data?.contacts) {
+          const { properties } = contact;
+          const fName = properties.firstname?.value;
+          const lName = properties.lastname?.value;
+          const email = this.getContactEmail(contact);
+          const dateOfBirth = properties.date_of_birth?.value;
+
+          const existingPerson = await this.searchPerson({ fName, lName });
+
+          if (existingPerson.length) {
+            await this.elasticsearchService.update({
+              index: this.index,
+              id: existingPerson[0]._id,
+              doc: { fName, lName, email, dateOfBirth },
+            });
+          } else {
+            await this.elasticsearchService.index({
+              index: this.index,
+              document: {
+                fName,
+                lName,
+                email,
+                dateOfBirth,
+                countOfOwnedCars: 0,
+              },
+            });
+          }
+        }
+
+        hasMore = data['has-more'];
+        vidOffset = data['vid-offset'];
+      }
+    } catch (error) {
+      console.log('Error syncing contacts with HubSpot', error);
+      throw new HttpException(
+        'Failed to sync contacts with HubSpot',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }

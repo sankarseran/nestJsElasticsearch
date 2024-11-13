@@ -1,4 +1,4 @@
-import { IsString, IsInt, Min, IsNotEmpty } from 'class-validator';
+import { IsString, IsInt, Min, IsNotEmpty, IsDateString } from 'class-validator';
 
 export class Person {
     @IsString()
@@ -9,7 +9,7 @@ export class Person {
     @IsNotEmpty()
     lName: string;
 
-    @IsString()
+    @IsDateString()
     dateOfBirth: string;
 
     @IsInt()
