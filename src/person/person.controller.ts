@@ -9,13 +9,16 @@ import {
   Put,
   InternalServerErrorException,
   BadRequestException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { PersonService } from './person.service';
-import { Person } from './person.entity';
+import { CreateHubSpotContactDto, Person } from './person.entity';
+import { HubSpotService } from '../hubspot/hubspot.service';
 
 @Controller('person')
 export class PersonController {
-  constructor(private readonly personService: PersonService) {}
+  constructor(private readonly personService: PersonService, private readonly hubSpotService: HubSpotService) {}
 
   @Post()
   @UsePipes(new ValidationPipe())
@@ -60,7 +63,7 @@ export class PersonController {
     } catch (error) {
       console.error('Error searching:', error);
       if (error instanceof BadRequestException) {
-        throw error;
+        throw new BadRequestException(error.message);
       }
       throw new InternalServerErrorException('Error occurred during search');
     }
@@ -77,7 +80,7 @@ export class PersonController {
     } catch (error) {
       console.error('Error updating car count:', error);
       if (error instanceof BadRequestException) {
-        throw error;
+        throw new BadRequestException(error.message);
       }
       throw new InternalServerErrorException('Failed to update car count');
     }
@@ -91,6 +94,17 @@ export class PersonController {
     } catch (error) {
       console.error('Error updating car count:', error);
       throw new InternalServerErrorException('Failed to sync contacts with HubSpot');
+    }
+  }
+
+  @Post('create-contact')
+  @UsePipes(new ValidationPipe())
+  async createHubSpotContact(@Body() createHubSpotContactDto: CreateHubSpotContactDto) {
+    try {
+      const contact = await this.hubSpotService.createHubSpotContact(createHubSpotContactDto);
+      return { message: 'Contact created successfully', contact };
+    } catch (error) {
+      throw new HttpException('Failed to create contact', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 }
