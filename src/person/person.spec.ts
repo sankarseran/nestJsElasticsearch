@@ -7,6 +7,7 @@ import {
   SearchResponse,
   SearchTotalHitsRelation,
 } from '@elastic/elasticsearch/lib/api/types';
+import { HubSpotService } from '../hubspot/hubspot.service';
 
 const mockIndexResponse: WriteResponseBase = {
   _id: '1',
@@ -59,6 +60,7 @@ describe('PersonService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PersonService,
+        HubSpotService,
         {
           provide: ElasticsearchService,
           useValue: {
